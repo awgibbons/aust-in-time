@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Aust-In-Time</title>
+  <meta name="description" content="Eight big buttons to track where today's time went. Everything stays on your device.">
+  <meta name="theme-color" content="#101416">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Aust-In-Time">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main id="main" class="view">
+    <header class="top">
+      <div class="grow">
+        <div class="label">Today</div>
+        <div id="total" class="total">0:00:00</div>
+      </div>
+      <button type="button" class="text" id="open-history">History</button>
+      <button type="button" class="text" id="open-settings">Settings</button>
+    </header>
+    <div id="grid" class="grid"></div>
+    <div id="install-hint" class="hint" hidden>
+      <span id="install-text" class="grow"></span>
+      <button type="button" class="text" id="install-dismiss" aria-label="Dismiss">✕</button>
+    </div>
+    <div id="save-warning" class="hint warning" hidden>
+      This browser isn't letting the app save. Times will be lost when you close it (private browsing?).
+    </div>
+  </main>
+
+  <section id="settings" class="view scroll" hidden>
+    <header class="top">
+      <h1 class="grow">Projects</h1>
+      <button type="button" class="text" data-done>Done</button>
+    </header>
+    <div id="projects" class="rows"></div>
+
+    <div id="notify-section" hidden>
+      <h2>Notification</h2>
+      <label class="switch-row">
+        <span class="grow">Show a notification with a Stop button while a timer runs</span>
+        <input type="checkbox" id="notify">
+      </label>
+    </div>
+
+    <h2>Backup</h2>
+    <p class="note">
+      Your names, colors, times and history are stored only in this browser on this device.
+      Export a backup before changing phones or clearing browser data.
+    </p>
+    <div class="buttons">
+      <button type="button" class="outlined" id="export">Export backup</button>
+      <button type="button" class="outlined" id="import">Import backup</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden>
+    </div>
+    <p class="note">
+      <a href="https://github.com/awgibbons/aust-in-time#readme" target="_blank" rel="noopener">Install help and source</a>
+    </p>
+  </section>
+
+  <section id="history" class="view scroll" hidden>
+    <header class="top">
+      <h1 class="grow">History</h1>
+      <button type="button" class="text" data-done>Done</button>
+    </header>
+    <div id="days" class="rows"></div>
+  </section>
+
+  <dialog id="time-dialog">
+    <div class="sheet">
+      <h2 id="time-title" tabindex="-1" autofocus></h2>
+      <div class="label">Time today</div>
+      <div class="fields">
+        <label>Hours <input id="edit-h" inputmode="numeric" autocomplete="off"></label>
+        <label>Minutes <input id="edit-m" inputmode="numeric" autocomplete="off"></label>
+      </div>
+      <hr>
+      <div class="label">Move time to another project</div>
+      <div class="fields">
+        <label>Hours <input id="move-h" inputmode="numeric" autocomplete="off"></label>
+        <label>Minutes <input id="move-m" inputmode="numeric" autocomplete="off"></label>
+      </div>
+      <div id="move-error" class="error" hidden></div>
+      <div id="move-chips" class="chips"></div>
+      <button type="button" class="filled" id="move-go" disabled>Pick a project</button>
+      <div class="actions">
+        <button type="button" class="text" id="time-cancel">Cancel</button>
+        <button type="button" class="text" id="time-save">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="color-dialog">
+    <div class="sheet">
+      <h2 id="color-title" tabindex="-1" autofocus></h2>
+      <div id="swatches" class="swatches"></div>
+      <div class="actions">
+        <button type="button" class="text" id="color-cancel">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
