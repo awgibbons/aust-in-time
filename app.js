@@ -1,7 +1,8 @@
 // The page: draws the data, turns taps into changes, saves after every change.
 import {
-  DEFAULT_COLOR, PALETTE, PROJECT_COUNT, dayAsText, dayLabel, displayName, elapsed, exportBackup,
-  formatDuration, freshData, minutesOf, normalize, parseBackup, rollover, setElapsed, tap, total, transfer,
+  DEFAULT_COLOR, PALETTE, PROJECT_COUNT, clockTime, dayAsText, dayLabel, describe, displayName, elapsed,
+  exportBackup, formatDuration, freshData, minutesOf, normalize, offTimeline, parseBackup, rollover, setElapsed,
+  tap, timelineAsText, timelineAxis, timelineRows, todayRecord, total, transfer,
 } from './core.js';
 import { load, onExternalChange, save } from './store.js';
 
@@ -44,7 +45,10 @@ function tick() {
   const now = Date.now();
   const rolled = rollover(data, now);
   if (rolled !== data) commit(rolled); // midnight passed with the app open
-  else renderTimes(now);
+  else {
+    renderTimes(now);
+    refreshLive?.(now);
+  }
 }
 
 // ---------- drawing ----------
@@ -130,6 +134,7 @@ function render() {
   $('notify').checked = data.notify;
   renderTimes(Date.now());
   if (!$('history').hidden) renderHistory();
+  if (!$('day').hidden) renderDay();
 }
 
 function renderTimes(now) {
@@ -139,31 +144,186 @@ function renderTimes(now) {
   });
 }
 
+// ---------- history and the day view ----------
+
+/** Keeps the day in progress counting on screen; set by the open view while a timer runs. */
+let refreshLive = null;
+/** The day the day view shows, from the address. */
+let shownDay = null;
+
+const sum = (list) => list.reduce((a, b) => a + b, 0);
+const hourLabel = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric' });
+
+/** A strip across the day's working hours with a block in the project's color for each stretch. */
+function drawStrip(strip, segments) {
+  const axis = timelineAxis(segments);
+  strip.hidden = axis === null;
+  strip.replaceChildren();
+  if (!axis) return;
+  const span = axis.end - axis.start;
+  const across = (ms) => `${(ms / span) * 100}%`;
+  const track = el('div', 'track');
+  for (const s of segments) {
+    const block = el('span', 'block');
+    block.style.left = across(s.start - axis.start);
+    block.style.width = across(s.end - s.start);
+    block.style.background = colorOf(s.project);
+    track.append(block);
+  }
+  const ticks = el('div', 'ticks');
+  axis.ticks.forEach((tick, i) => {
+    const label = el('span', i === 0 ? 'first' : i === axis.ticks.length - 1 ? 'last' : null, hourLabel(tick));
+    label.style.left = across(tick - axis.start);
+    ticks.append(label);
+  });
+  strip.append(track, ticks);
+}
+
+/**
+ * A day's card: its total, a line per project that has time, and its timeline strip if it has one.
+ * [running] is the project to list even at zero. With [onOpen], tapping the card calls it.
+ * `refresh` puts a newer record's numbers into the same card.
+ */
+function dayCard(day, record, { title = dayLabel(day), running = null, onOpen = null } = {}) {
+  let shown = record;
+  const card = el('div', 'day');
+  const head = el('div', 'head');
+  const heading = el('div', 'grow');
+  const dayTotal = el('div', 'sum');
+  heading.append(el('div', 'date', title), dayTotal);
+  const copy = el('button', 'text', 'Copy');
+  copy.type = 'button';
+  copy.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyText(dayAsText(day, shown));
+  });
+  head.append(heading, copy);
+  card.append(head);
+  const times = new Map();
+  projects.forEach((project) => {
+    if (record.totals[project] === 0 && project !== running) return;
+    const line = el('div', 'line');
+    const dot = el('span', 'dot');
+    paint(dot, colorOf(project));
+    const time = el('span', 'time');
+    times.set(project, time);
+    line.append(dot, el('span', 'grow', record.names[project].trim()), time);
+    card.append(line);
+  });
+  const strip = el('div', 'strip');
+  card.append(strip);
+  if (onOpen) {
+    card.classList.add('opens');
+    card.tabIndex = 0;
+    card.addEventListener('click', onOpen);
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === card) onOpen(); });
+  }
+  const refresh = (newer) => {
+    shown = newer;
+    dayTotal.textContent = formatDuration(sum(newer.totals));
+    times.forEach((time, project) => { time.textContent = formatDuration(newer.totals[project]); });
+    drawStrip(strip, newer.segments);
+  };
+  refresh(record);
+  return { card, refresh };
+}
+
 function renderHistory() {
-  const days = Object.keys(data.history).sort().reverse();
   const list = $('days');
   list.replaceChildren();
-  if (days.length === 0) list.append(el('p', 'note', 'Each day is saved here at midnight.'));
-  for (const day of days) {
-    const record = data.history[day];
-    const card = el('div', 'day');
-    const head = el('div', 'head');
-    const title = el('div', 'grow');
-    title.append(el('div', 'date', dayLabel(day)), el('div', 'sum', formatDuration(record.totals.reduce((a, b) => a + b, 0))));
+  refreshLive = null;
+  const now = Date.now();
+  const open = (day) => () => {
+    historyScroll = scrollY;
+    location.hash = `day/${day}`;
+  };
+  if (data.running !== null || total(data, now) > 0) {
+    const today = dayCard(data.day, todayRecord(data, now), { title: 'Today so far', running: data.running, onOpen: open(data.day) });
+    list.append(today.card);
+    if (data.running !== null) refreshLive = (at) => today.refresh(todayRecord(data, at));
+  }
+  const days = Object.keys(data.history).sort().reverse();
+  list.append(el('p', 'note', days.length === 0
+    ? 'Each day is saved here at midnight. Tap a day to see when each timer ran.'
+    : 'Tap a day to see when each timer ran.'));
+  for (const day of days) list.append(dayCard(day, data.history[day], { onOpen: open(day) }).card);
+}
+
+/** One day, finished or still going: its totals, then when each timer ran and what was changed by hand. */
+function renderDay() {
+  const body = $('day-body');
+  body.replaceChildren();
+  refreshLive = null;
+  const now = Date.now();
+  const isToday = shownDay === data.day;
+  const record = isToday ? todayRecord(data, now) : Object.hasOwn(data.history, shownDay) ? data.history[shownDay] : null;
+  if (!record) {
+    body.append(el('p', 'note', 'Nothing is saved for this day.'));
+    return;
+  }
+  const running = isToday ? data.running : null;
+  const card = dayCard(shownDay, record, isToday ? { title: 'Today so far', running } : {});
+  body.append(card.card);
+
+  const rows = timelineRows(record.segments);
+  let lastTime = null;
+  if (rows.length > 0) {
+    const head = el('div', 'section-head');
     const copy = el('button', 'text', 'Copy');
     copy.type = 'button';
-    copy.addEventListener('click', () => copyText(dayAsText(day, record)));
-    head.append(title, copy);
-    card.append(head);
-    projects.forEach((project) => {
-      if (record.totals[project] === 0) return;
-      const line = el('div', 'line');
-      const dot = el('span', 'dot');
-      paint(dot, colorOf(project));
-      line.append(dot, el('span', 'grow', record.names[project].trim()), el('span', 'time', formatDuration(record.totals[project])));
-      card.append(line);
+    // Read again when pressed, so a day still going is copied as it stands.
+    copy.addEventListener('click', () => {
+      copyText(timelineAsText(shownDay, shownDay === data.day ? todayRecord(data, Date.now()) : record));
     });
-    list.append(card);
+    head.append(el('h2', 'grow', 'Timeline'), copy);
+    body.append(head);
+    rows.forEach((row, i) => {
+      const line = el('div', 'stretch');
+      lastTime = el('span', 'time', formatDuration(row.end - row.start));
+      if (row.project === null) {
+        line.classList.add('gap');
+        line.append(el('span', 'dot none'), el('span', 'grow', 'Nothing running'), lastTime);
+      } else {
+        const dot = el('span', 'dot');
+        paint(dot, colorOf(row.project));
+        const untilNow = running !== null && i === rows.length - 1;
+        const what = el('div', 'grow');
+        what.append(
+          el('div', null, record.names[row.project].trim()),
+          el('div', 'when', `${clockTime(row.start)} – ${untilNow ? 'now' : clockTime(row.end)}`),
+        );
+        line.append(dot, what, lastTime);
+      }
+      body.append(line);
+    });
+  }
+
+  if (record.adjustments.length > 0) {
+    const head = el('div', 'section-head');
+    head.append(el('h2', 'grow', 'Changed by hand'));
+    body.append(head);
+    for (const a of record.adjustments) {
+      const line = el('div', 'change');
+      line.append(el('span', 'at', clockTime(a.at)), el('span', 'grow', describe(a, record.names)));
+      body.append(line);
+    }
+  }
+
+  const missing = offTimeline(record);
+  if (missing >= 1000) {
+    body.append(el('p', 'note', rows.length === 0 && record.adjustments.length === 0
+      ? 'No start and stop times were kept for this day: it was tracked before the app had a timeline.'
+      : `${formatDuration(missing)} of this day's total is not on the timeline: it was timed before the app kept start and stop times.`));
+  }
+
+  if (running !== null) {
+    refreshLive = (at) => {
+      const newer = todayRecord(data, at);
+      const last = timelineRows(newer.segments).pop();
+      if (newer.segments.length !== record.segments.length) return renderDay();
+      card.refresh(newer);
+      if (last) lastTime.textContent = formatDuration(last.end - last.start);
+    };
   }
 }
 
@@ -210,11 +370,14 @@ const moveH = $('move-h');
 const moveM = $('move-m');
 let editing = 0;
 let target = null;
+/** The whole minutes the dialog opened with: saving them unchanged changes nothing. */
+let shownMinutes = 0;
 
 function openTimeDialog(project) {
   editing = project;
   target = null;
   const minutes = Math.floor(elapsed(data, project, Date.now()) / 60_000);
+  shownMinutes = minutes;
   $('time-title').textContent = displayName(data, project);
   editH.value = String(Math.floor(minutes / 60));
   editM.value = String(minutes % 60);
@@ -257,7 +420,7 @@ function checkTimeDialog() {
 function saveEditedTime() {
   const edited = minutesOf(editH.value, editM.value);
   if (edited === null) return;
-  act((d, now) => setElapsed(d, editing, edited * 60_000, now));
+  if (edited !== shownMinutes) act((d, now) => setElapsed(d, editing, edited * 60_000, now));
   timeDialog.close();
 }
 
@@ -371,12 +534,11 @@ async function refreshNotification() {
       (await registration.getNotifications({ tag: 'running' })).forEach((n) => n.close());
       return;
     }
-    const started = new Date(data.since).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     await registration.showNotification(displayName(data, running), {
-      body: `Running since ${started}`,
+      body: `Running since ${clockTime(data.started)}`,
       tag: 'running',
       icon: 'icons/icon-192.png',
-      timestamp: data.since,
+      timestamp: data.started,
       silent: true,
       requireInteraction: true,
       actions: [{ action: 'stop', title: 'Stop' }],
@@ -418,12 +580,20 @@ function keepStorage() {
   navigator.storage?.persist?.().catch(() => {});
 }
 
-// Views are #settings and #history so the phone's Back button returns to the timers.
+// Views are #settings, #history and #day/2026-11-05, so the phone's Back button goes back one step.
+let view = 'main';
+/** How far down History was when a day was opened, to come back to the same place. */
+let historyScroll = 0;
 function showView() {
-  const view = ['settings', 'history'].find((name) => location.hash === `#${name}`) ?? 'main';
-  for (const name of ['main', 'settings', 'history']) $(name).hidden = name !== view;
+  const hash = location.hash.slice(1);
+  const from = view;
+  shownDay = hash.startsWith('day/') ? hash.slice(4) : null;
+  view = shownDay !== null ? 'day' : ['settings', 'history'].includes(hash) ? hash : 'main';
+  for (const name of ['main', 'settings', 'history', 'day']) $(name).hidden = name !== view;
+  refreshLive = null;
   if (view === 'history') renderHistory();
-  scrollTo(0, 0);
+  if (view === 'day') renderDay();
+  scrollTo(0, view === 'history' && from === 'day' ? historyScroll : 0);
 }
 if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 addEventListener('hashchange', showView);
@@ -450,7 +620,7 @@ if (!installed && !dismissed) {
 // ---------- start ----------
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js', { type: 'module' }).catch(() => {});
+  navigator.serviceWorker.register('sw.js', { type: 'module', updateViaCache: 'none' }).catch(() => {});
 }
 
 onExternalChange(reload);

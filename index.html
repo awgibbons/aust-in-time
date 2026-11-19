@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Aust-In-Time</title>
-  <meta name="description" content="Eight big buttons to track where today's time went. Everything stays on your device.">
+  <meta name="description" content="Ten big buttons to track where today's time went. Everything stays on your device.">
   <meta name="theme-color" content="#101416">
   <meta name="color-scheme" content="dark">
   <meta name="mobile-web-app-capable" content="yes">
@@ -73,6 +73,14 @@
       <button type="button" class="text" data-done>Done</button>
     </header>
     <div id="days" class="rows"></div>
+  </section>
+
+  <section id="day" class="view scroll" hidden>
+    <header class="top">
+      <h1 class="grow">Day</h1>
+      <button type="button" class="text" data-done>Done</button>
+    </header>
+    <div id="day-body" class="rows"></div>
   </section>
 
   <dialog id="time-dialog">

@@ -1,8 +1,10 @@
 // Service worker: keeps the app working offline, and handles the notification's Stop button.
-import { rollover, stop } from './core.js';
-import { load, save } from './store.js';
+// The ?v= makes an updated worker fetch these, not reuse copies the browser still holds
+// from the previous version. Change it together with CACHE.
+import { normalize, rollover, stop } from './core.js?v=2';
+import { load, save } from './store.js?v=2';
 
-const CACHE = 'aust-in-time-v1';
+const CACHE = 'aust-in-time-v2';
 const ASSETS = [
   './', 'style.css', 'app.js', 'core.js', 'store.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
@@ -10,15 +12,23 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // 'reload' fetches every file from the server, so the cache never mixes two versions.
+  const fresh = ASSETS.map((url) => new Request(url, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((names) => Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name))))
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil((async () => {
+    const old = (await caches.keys()).filter((name) => name !== CACHE);
+    await Promise.all(old.map((name) => caches.delete(name)));
+    await self.clients.claim();
+    if (old.length === 0) return;
+    // This is an update. Pages still running the previous version load this one now,
+    // so two versions never work on the same data.
+    for (const page of await self.clients.matchAll({ type: 'window' })) {
+      page.navigate?.(page.url)?.catch(() => {});
+    }
+  })());
 });
 
 // Answer from the cache at once and refresh the cache in the background:
@@ -49,7 +59,7 @@ async function stopTimer() {
   const stored = await load();
   if (!stored) return;
   const now = Date.now();
-  await save(stop(rollover(stored, now), now)); // open pages hear about the save and redraw
+  await save(stop(rollover(normalize(stored, now), now), now)); // open pages hear about the save and redraw
 }
 
 async function openApp() {

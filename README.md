@@ -1,6 +1,6 @@
 # Aust-In-Time
 
-Time tracking, delivered Aust-In-Time. Eight big buttons, one per project: tap one when you start
+Time tracking, delivered Aust-In-Time. Ten big buttons, one per project: tap one when you start
 working on it, tap another when you switch, and see where today went.
 
 **Open it: https://awgibbons.github.io/aust-in-time/**
@@ -38,12 +38,15 @@ It also works in any desktop browser. Right-click a button for what a long press
 
 - **Tap a button** to start that project. Tap another to switch; only one runs at a time.
   Tap the running one to stop.
-- **Today** at the top is the total across all eight. Everything resets at midnight.
+- **Today** at the top is the total across all ten. Everything resets at midnight.
 - **Long-press a button** to fix its time for today, or to move some of its time to another
   project (for when you forgot to switch).
 - **Settings** sets each button's name and color.
-- **History** keeps every finished day. **Copy** puts a day on the clipboard as text, ready to
-  paste into a timesheet or a spreadsheet.
+- **History** keeps every finished day, with today so far at the top. **Copy** puts a day's
+  totals on the clipboard as text, ready to paste into a timesheet or a spreadsheet.
+- **Tap a day** in History to see its timeline: when each timer started and stopped, the gaps
+  in between, and any time you changed by hand. The colored bar on each day shows the same at a
+  glance. Days tracked before the timeline was added only have totals.
 
 A timer keeps counting while the app is closed or the phone is locked; it only remembers when
 it was started.
@@ -60,8 +63,8 @@ it was started.
 ## Good to know
 
 - It works offline once it has been opened one time.
-- Updates arrive on their own: after a new version is published, you get it the second time
-  you open the app.
+- Updates arrive on their own, within an open or two after a new version is published. The
+  app may reload itself once when that happens. Your names, times and history are kept.
 - iPhone has no running-timer notification or lock-screen timer; web apps can't do that there.
 - A day is saved to History the first time the app is opened after midnight (or at midnight if
   it is open). A timer left running overnight is counted up to midnight for the old day and
@@ -93,8 +96,12 @@ npm test     # unit tests for the timer logic (Node 18+)
 
 | File | What it is |
 |---|---|
-| `core.js` | The timer logic: starting, stopping, editing, moving time, midnight rollover, backups. No browser code, so it is what the tests cover. |
+| `core.js` | The timer logic: starting, stopping, editing, moving time, the timeline, midnight rollover, backups. No browser code, so it is what the tests cover. |
 | `store.js` | Saving and loading (IndexedDB). |
-| `app.js` | The page: drawing, taps, dialogs, settings, history. |
+| `app.js` | The page: drawing, taps, dialogs, settings, history and the day view. |
 | `sw.js` | Service worker: offline support and the notification's Stop button. |
 | `index.html`, `style.css`, `manifest.webmanifest`, `icons/` | Markup, styling, and what makes it installable. |
+
+When you publish a change, raise the version in `sw.js` (`CACHE` and the `?v=` on its imports).
+Installed copies then switch to the new files in one step and reload. Data saved by an older
+version has to keep loading: `normalize` in `core.js` is where old shapes are brought up to date.

@@ -4,7 +4,11 @@
 
 const DB = 'aust-in-time';
 const STORE = 'kv';
-const KEY = 'data';
+const KEY = 'data2';
+// The first versions had eight projects and kept their record under 'data'. They can't read one
+// with ten (they would start again from empty and save that), so theirs is left as they wrote it,
+// in case a page still running an old version is open. It is read once, when this version first runs.
+const OLD_KEY = 'data';
 
 function open() {
   return new Promise((resolve, reject) => {
@@ -20,8 +24,14 @@ export async function load() {
   const db = await open();
   try {
     return await new Promise((resolve, reject) => {
-      const request = db.transaction(STORE).objectStore(STORE).get(KEY);
-      request.onsuccess = () => resolve(request.result);
+      const store = db.transaction(STORE).objectStore(STORE);
+      const request = store.get(KEY);
+      request.onsuccess = () => {
+        if (request.result !== undefined) return resolve(request.result);
+        const older = store.get(OLD_KEY);
+        older.onsuccess = () => resolve(older.result);
+        older.onerror = () => reject(older.error);
+      };
       request.onerror = () => reject(request.error);
     });
   } finally {
